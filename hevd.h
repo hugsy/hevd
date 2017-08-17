@@ -247,3 +247,57 @@ DWORD GetPageSize()
         GetSystemInfo(&siSysInfo);
         return siSysInfo.dwPageSize;
 }
+
+
+/**
+ * C version of the algorithm implemented in GEF
+ */
+VOID static PopulateDeBruijnSequence(DWORD t,
+                                     DWORD p,
+                                     DWORD dwSize,
+                                     LPSTR lpAlphabet,
+                                     DWORD dwAlphabetLen,
+                                     DWORD period,
+                                     DWORD* aIndex,
+                                     LPSTR lpResult)
+{
+        if (strlen(lpResult)==dwSize)
+                return;
+
+        if (t > period){
+                if ((period % p) == 0){
+                        for (int j=1; j<p+1; j++) {
+                                lpResult[ strlen(lpResult) ] = lpAlphabet[ aIndex[j] ];
+                                if (strlen(lpResult)==dwSize)
+                                        return;
+                        }
+                }
+        } else{
+                aIndex[t] = aIndex[t-p];
+                PopulateDeBruijnSequence(t+1, p, dwSize, lpAlphabet, dwAlphabetLen, period, aIndex, lpResult);
+
+                for (int j=aIndex[t-p]+1; j<dwAlphabetLen; j++){
+                        aIndex[t] = j;
+                        PopulateDeBruijnSequence(t+1, t, dwSize, lpAlphabet, dwAlphabetLen, period, aIndex, lpResult);
+                }
+        }
+        return;
+}
+
+
+LPSTR CreateDeBruijnPatternEx(DWORD dwSize, DWORD dwPeriod)
+{
+        const LPSTR lpAlphabet = "abcdefghijklmnopqrstuvwxyz";
+        DWORD dwAlphabetLen = strlen(lpAlphabet);
+        LPSTR lpRes = calloc(sizeof(uint8_t), dwSize+1);
+        DWORD* aIndex = calloc(sizeof(uint32_t), dwAlphabetLen * dwPeriod);
+        PopulateDeBruijnSequence(1, 1, dwSize, lpAlphabet, dwAlphabetLen, dwPeriod, aIndex, lpRes);
+        free(aIndex);
+        return lpRes;
+}
+
+
+LPSTR CreateDeBruijnPattern(DWORD dwSize)
+{
+        return CreateDeBruijnPatternEx(dwSize, sizeof(uintptr_t));
+}
