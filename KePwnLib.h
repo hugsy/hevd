@@ -15,18 +15,34 @@
 
 #pragma comment(lib, "User32.lib")
 #pragma comment(lib, "Advapi32.lib")
-#pragma comment(lib,"ntdll.lib")
+#pragma comment(lib, "ntdll.lib")
 
 #define SYSTEM_PROCESS_NAME "lsass.exe"
-
 #define KERNEL_PROCESS_PATH "\\SystemRoot\\system32\\"KERNEL_PROCESS_NAME
 #define KERNEL_PROCESS_NAME "ntoskrnl.exe"
-
 #define DEBUG FALSE
 
+void info(const char* format, ... );
+void ok(const char* format, ... );
+void warn(const char* format, ... );
+void err(const char* format, ... );
+void perr(char* msg);
+void hexdump(PVOID data, SIZE_T size);
 
-DWORD GetPageSize();
-
+DWORD        GetProcessIdByName(LPTSTR processName);
+DWORD        GetProcessParentId(DWORD dwProcessId);
+BOOL         CheckIsSystem();
+BOOL         PopupNewProcess(LPSTR lpCommandLine);
+BOOL         PopupCmd();
+BOOL         PopupCalc();
+BOOL         AssignPrivilegeToProcessId(DWORD dwPid, LPCTSTR lpPrivilegeName);
+BOOL         AssignPrivilegeToProcessName(LPTSTR lpProcessName, LPCTSTR lpPrivilegeName);
+PVOID        AllocatePageWithShellcode();
+LPSTR        CreateDeBruijnPatternEx(DWORD dwSize, DWORD dwPeriod);
+LPSTR        CreateDeBruijnPattern(DWORD dwSize);
+DWORD        GetPageSize();
+ULONG_PTR    GetKernelImageBase();
+int          GetNumberOfCores();
 
 
 /**
@@ -91,14 +107,14 @@ void perr(char* msg)
         p = sysMsg;
         while( ( *p > 31 ) || ( *p == 9 ) )
                 ++p;
-        do { *p-- = 0; } while( ( p >= sysMsg ) &&
-                                ( ( *p == '.' ) || ( *p < 33 ) ) );
+        do { *p-- = 0; }
+        while( ( p >= sysMsg ) && ( ( *p == '.' ) || ( *p < 33 ) ) );
 
         err("%s: %s (%d)\n", msg, sysMsg, eNum);
 }
 
 
-VOID hexdump(PVOID data, SIZE_T size)
+void hexdump(PVOID data, SIZE_T size)
 {
         CHAR ascii[17] = {0, };
         SIZE_T i, j;
@@ -132,10 +148,6 @@ VOID hexdump(PVOID data, SIZE_T size)
         }
 }
 
-
-/**
- * Post exploit
- */
 
 
 /**
@@ -261,17 +273,15 @@ BOOL PopupNewProcess(LPSTR lpCommandLine)
 }
 
 
-void PopupCmd()
+BOOL PopupCmd()
 {
-        PopupNewProcess("c:\\windows\\system32\\cmd.exe");
-        return;
+        return PopupNewProcess("c:\\windows\\system32\\cmd.exe");
 }
 
 
-void PopupCalc()
+BOOL PopupCalc()
 {
-        PopupNewProcess("c:\\windows\\system32\\calc.exe");
-        return;
+        return PopupNewProcess("c:\\windows\\system32\\calc.exe");
 }
 
 
@@ -554,4 +564,34 @@ ULONG_PTR GetKernelImageBase()
 
         HeapFree(GetProcessHeap(), 0, Modules);
         return res;
+}
+
+
+/**
+ * Returns number of cores. Useful when exploiting kernel races.
+ *
+ * @return -1 if an error occured
+ * @return the number of cores on the current machine otherwise
+ */
+int GetNumberOfCores()
+{
+        PSYSTEM_LOGICAL_PROCESSOR_INFORMATION pSlpi;
+        DWORD dLen = 0x100*sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+        DWORD logicalProcessorCount=0, i, len;
+
+        pSlpi = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION)HeapAlloc(GetProcessHeap(), 0, dLen);
+        if(GetLogicalProcessorInformation(pSlpi, &dLen) == FALSE){
+                perr("GetLogicalProcessorInformation() failed");
+                return -1;
+        }
+
+        len = dLen / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+        for(i=0; i<len; i++){
+                if(pSlpi[i].Relationship == RelationProcessorCore){
+                        logicalProcessorCount++;
+                }
+        }
+
+        HeapFree(GetProcessHeap(), 0, pSlpi);
+        return logicalProcessorCount;
 }
