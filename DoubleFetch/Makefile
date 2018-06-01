@@ -1,5 +1,5 @@
 DEBUG		=	0
-CFLAGS 		=	-D__WIN8__ -Wall -Wextra
+CFLAGS 		=	-D__WIN81__ -Wall -Wextra
 SOURCES		= 	$(wildcard *.c)
 COMPILED	= 	$(SOURCES:.c=.o)
 LINKED		= 	$(SOURCES:.c=.exe)
@@ -17,9 +17,9 @@ CFLAGS		+=	-DDEBUG=1 -D_DEBUG=1 -g
 endif
 
 
-.PHONY : all clean
+.PHONY : all clean doublefetch
 
-all: $(LINKED)
+all: clean doublefetch
 
 %.o : %.c
 	@echo "[+] Compiling C file '$@'"
@@ -29,6 +29,10 @@ all: $(LINKED)
 %.exe : %.o
 	@echo "[+] Linking C file '$@'"
 	$(CC) $(CFLAGS) -o $@ $? $(LIB) $(LDFLAGS)
+
+
+doublefetch: exploit.exe
+	cp $< ~/tmp/$@.exe
 
 
 clean :

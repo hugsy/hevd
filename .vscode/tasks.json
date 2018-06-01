@@ -6,7 +6,11 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "make -C DoubleFetch exploit.exe"
+            "command": "make -C DoubleFetch all",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

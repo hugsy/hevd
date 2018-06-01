@@ -10,9 +10,8 @@
             },
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/../*",
-                "/usr/x86_64-w64-mingw32/include",
-                "${HOME}/code/pwnlib"
+                "/usr/x86_64-w64-mingw32/include/",
+                "${HOME}/code/pwnlib/"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/x86_64-w64-mingw32-gcc"
