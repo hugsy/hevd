@@ -3,7 +3,7 @@ CFLAGS 		=	-D__WIN81__ -Wall -Wextra
 SOURCES		= 	$(wildcard *.c)
 COMPILED	= 	$(SOURCES:.c=.o)
 LINKED		= 	$(SOURCES:.c=.exe)
-LDFLAGS		=	-lntdll -lpsapi -lktmw32 -lPwnLib-x64
+LDFLAGS		=	-lntdll -lPwnLib-x64 -lpsapi
 
 CC		=	x86_64-w64-mingw32-gcc
 INC		=	-I$(HOME)/code/pwnlib -I..

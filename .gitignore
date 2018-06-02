@@ -1,4 +1,4 @@
 *.obj
 *.lib
-*.exe
-*.ohevd.code-workspace
+*.dll
+*.code-workspace
