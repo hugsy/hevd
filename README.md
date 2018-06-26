@@ -6,4 +6,4 @@ for
 targeting
 Windows 8.1 x64.
 
-Full details of writeups can be found at https://blahcat.github.io/categories/#windows-kernel-exploitation
+Full details of writeups can be found at https://blahcat.github.io/tutorials/#windows-kernel-exploitation
